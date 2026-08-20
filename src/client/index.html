@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#07111d" />
+    <title>Beacon Relay</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="aurora aurora-one" aria-hidden="true"></div>
+    <div class="aurora aurora-two" aria-hidden="true"></div>
+    <main class="shell">
+      <header class="masthead">
+        <div>
+          <p class="eyebrow">HERMES COOPERATIVE SYSTEM // BR-01</p>
+          <h1>Beacon Relay</h1>
+          <p class="lede">Five pilots. Eight rounds. Connect the signal lattice before the storm closes.</p>
+        </div>
+        <div class="signal-mark" aria-hidden="true"><i></i><i></i><i></i></div>
+      </header>
+
+      <section id="landing" class="landing" aria-labelledby="access-title">
+        <div class="mission-card">
+          <p class="eyebrow">MISSION BRIEF</p>
+          <h2 id="access-title">Bring the fleet online</h2>
+          <p>Every valid move leaves a relay behind. Coordinate paths from the central hub to all three beacons.</p>
+          <ol class="brief-list">
+            <li><span>01</span> Assemble exactly five pilots.</li>
+            <li><span>02</span> Choose one labelled move each round.</li>
+            <li><span>03</span> Activate all beacons within eight rounds.</li>
+          </ol>
+        </div>
+
+        <div class="access-stack">
+          <form id="create-form" class="access-card">
+            <div class="card-heading"><span class="step">HOST</span><h2>Create a room</h2></div>
+            <label>Your display name<input id="host-name" name="hostName" autocomplete="nickname" maxlength="24" required /></label>
+            <label>Room password<input id="host-password" name="password" type="password" autocomplete="new-password" minlength="8" maxlength="128" required /></label>
+            <button class="primary" type="submit">Create private room</button>
+          </form>
+
+          <form id="join-form" class="access-card">
+            <div class="card-heading"><span class="step">JOIN</span><h2>Enter a room</h2></div>
+            <label>Room code<input id="room-code-input" name="roomCode" autocomplete="off" maxlength="16" required /></label>
+            <label>Your pilot name<input id="player-name" name="playerName" autocomplete="nickname" maxlength="24" required /></label>
+            <label>Room password to join<input id="join-password" name="password" type="password" autocomplete="current-password" maxlength="128" required /></label>
+            <button type="submit">Join relay room</button>
+          </form>
+          <p id="form-error" class="form-error" role="alert" hidden></p>
+        </div>
+      </section>
+
+      <section id="room" class="room" hidden aria-labelledby="room-title">
+        <div class="room-topline">
+          <div>
+            <p class="eyebrow">LIVE OPERATION</p>
+            <h2 id="room-title">Relay room</h2>
+          </div>
+          <div class="room-code-block">
+            <span id="room-code-label">Room code:</span>
+            <button id="copy-invite" type="button">Copy agent invite</button>
+          </div>
+        </div>
+
+        <div id="game-status" class="status-banner" role="status" aria-live="polite"></div>
+
+        <div class="game-layout">
+          <section class="board-panel" aria-labelledby="board-title">
+            <div class="panel-title"><h3 id="board-title">Signal lattice</h3><span id="round-label">Round —</span></div>
+            <div id="board" class="board" role="grid" aria-label="Beacon Relay board"></div>
+          </section>
+
+          <aside class="telemetry">
+            <section class="telemetry-card" aria-labelledby="pilots-title">
+              <div class="panel-title"><h3 id="pilots-title">Pilots</h3><span id="pilot-count">0/5</span></div>
+              <ul id="players" class="players"></ul>
+            </section>
+
+            <section id="action-panel" class="telemetry-card" aria-labelledby="actions-title" hidden>
+              <div class="panel-title"><h3 id="actions-title">Choose action</h3><span>ONE / ROUND</span></div>
+              <div class="direction-pad">
+                <button type="button" data-action="north" aria-label="Move north">↑<small>NORTH</small></button>
+                <button type="button" data-action="west" aria-label="Move west">←<small>WEST</small></button>
+                <button type="button" data-action="pass" aria-label="Pass this round">•<small>PASS</small></button>
+                <button type="button" data-action="east" aria-label="Move east">→<small>EAST</small></button>
+                <button type="button" data-action="south" aria-label="Move south">↓<small>SOUTH</small></button>
+              </div>
+            </section>
+
+            <section class="telemetry-card log-card" aria-labelledby="events-title">
+              <div class="panel-title"><h3 id="events-title">Event stream</h3><span>SERVER</span></div>
+              <ol id="events" class="events" aria-live="polite"></ol>
+            </section>
+          </aside>
+        </div>
+      </section>
+    </main>
+    <script type="module" src="/app.ts"></script>
+  </body>
+</html>
