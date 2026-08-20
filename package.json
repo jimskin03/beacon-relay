@@ -10,12 +10,15 @@
     "test": "vitest run --config vitest.config.ts",
     "test:watch": "vitest --config vitest.config.ts",
     "test:e2e": "playwright test",
+    "agent:run": "tsx src/runner/agent-runner.ts",
+    "agent:run:dist": "node dist/runner/agent-runner.js",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.server.json"
   },
   "dependencies": {
     "@fastify/static": "^10.1.3",
     "@fastify/websocket": "^11.2.0",
     "fastify": "^5.6.2",
+    "ws": "^8.21.3",
     "zod": "^4.1.12"
   },
   "devDependencies": {

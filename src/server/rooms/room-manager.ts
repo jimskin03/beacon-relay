@@ -9,6 +9,7 @@ import {
 
 const scrypt = promisify(scryptCallback);
 const MAX_PLAYERS = 5;
+const DEFAULT_ROUND_DURATION_MS = 45_000;
 
 export type RoomPlayer = Readonly<{
   id: string;
@@ -21,6 +22,9 @@ export type RoomSnapshot = Readonly<{
   players: readonly RoomPlayer[];
   game: GameState | null;
   submittedPlayerIds: readonly string[];
+  connectedPlayerIds: readonly string[];
+  lastTimedOutPlayerIds: readonly string[];
+  roundDeadlineAt: number | null;
   events: readonly string[];
 }>;
 
@@ -39,6 +43,9 @@ type Room = {
   game: GameState | null;
   pendingActions: Map<string, PlayerAction>;
   processedRequests: Set<string>;
+  connectedPlayerIds: Set<string>;
+  lastTimedOutPlayerIds: string[];
+  roundDeadlineAt: number | null;
   events: string[];
 };
 
@@ -57,6 +64,15 @@ type JoinResult = Readonly<{
 export class RoomManager {
   private readonly rooms = new Map<string, Room>();
   private readonly sessions = new Map<string, Session>();
+  private readonly roundDurationMs: number;
+  private readonly now: () => number;
+
+  constructor(
+    options: Readonly<{ roundDurationMs?: number; now?: () => number }> = {},
+  ) {
+    this.roundDurationMs = options.roundDurationMs ?? DEFAULT_ROUND_DURATION_MS;
+    this.now = options.now ?? Date.now;
+  }
 
   async createRoom(input: Readonly<{ hostName: string; password: string }>): Promise<JoinResult> {
     const code = randomBytes(12).toString('base64url');
@@ -73,6 +89,9 @@ export class RoomManager {
       game: null,
       pendingActions: new Map(),
       processedRequests: new Set(),
+      connectedPlayerIds: new Set(),
+      lastTimedOutPlayerIds: [],
+      roundDeadlineAt: null,
       events: [],
     };
     this.rooms.set(code, room);
@@ -97,8 +116,7 @@ export class RoomManager {
     room.tokens.set(token, player.id);
     this.sessions.set(token, { roomCode: room.code, playerId: player.id });
     if (room.players.length === MAX_PLAYERS) {
-      room.game = createInitialGame(room.players.map((entry) => entry.id));
-      room.events = ['All five relay pilots connected. Round 1 started.'];
+      this.startGame(room);
     }
     return resultFor(room, player, token);
   }
@@ -127,10 +145,7 @@ export class RoomManager {
     room.pendingActions.set(session.playerId, input.action);
     let resolved = false;
     if (room.pendingActions.size === MAX_PLAYERS) {
-      const result = resolveRound(room.game, Object.fromEntries(room.pendingActions));
-      room.game = result.state;
-      room.events = [...result.events];
-      room.pendingActions.clear();
+      this.resolveRoom(room, []);
       resolved = true;
     }
     return { duplicate: false, resolved, snapshot: snapshotFor(room) };
@@ -138,6 +153,34 @@ export class RoomManager {
 
   snapshotForToken(token: string): RoomSnapshot {
     return snapshotFor(this.requireSession(token).room);
+  }
+
+  setConnected(token: string, connected: boolean): RoomSnapshot {
+    const { room, session } = this.requireSession(token);
+    if (connected) room.connectedPlayerIds.add(session.playerId);
+    else room.connectedPlayerIds.delete(session.playerId);
+    return snapshotFor(room);
+  }
+
+  resolveExpiredRooms(): readonly Readonly<{ roomCode: string; snapshot: RoomSnapshot }>[] {
+    const resolved: Array<Readonly<{ roomCode: string; snapshot: RoomSnapshot }>> = [];
+    const now = this.now();
+    for (const room of this.rooms.values()) {
+      if (
+        !room.game ||
+        room.game.phase !== 'playing' ||
+        room.roundDeadlineAt === null ||
+        room.roundDeadlineAt > now
+      ) {
+        continue;
+      }
+      const timedOutPlayerIds = room.players
+        .map((player) => player.id)
+        .filter((playerId) => !room.pendingActions.has(playerId));
+      this.resolveRoom(room, timedOutPlayerIds);
+      resolved.push({ roomCode: room.code, snapshot: snapshotFor(room) });
+    }
+    return resolved;
   }
 
   authenticateToken(token: string): Readonly<{ playerId: string; snapshot: RoomSnapshot }> {
@@ -171,10 +214,34 @@ export class RoomManager {
     room.tokens.set(token, player.id);
     this.sessions.set(token, { roomCode: room.code, playerId: player.id });
     if (room.players.length === MAX_PLAYERS) {
-      room.game = createInitialGame(room.players.map((entry) => entry.id));
-      room.events = ['All five relay pilots connected. Round 1 started.'];
+      this.startGame(room);
     }
     return resultFor(room, player, token);
+  }
+
+  private startGame(room: Room): void {
+    room.game = createInitialGame(room.players.map((entry) => entry.id));
+    room.roundDeadlineAt = this.now() + this.roundDurationMs;
+    room.lastTimedOutPlayerIds = [];
+    room.events = ['All five relay pilots connected. Round 1 started.'];
+  }
+
+  private resolveRoom(room: Room, timedOutPlayerIds: readonly string[]): void {
+    if (!room.game) return;
+    for (const playerId of timedOutPlayerIds) {
+      room.pendingActions.set(playerId, { kind: 'pass' });
+    }
+    const result = resolveRound(room.game, Object.fromEntries(room.pendingActions));
+    room.game = result.state;
+    room.lastTimedOutPlayerIds = [...timedOutPlayerIds];
+    room.events = [...result.events];
+    if (timedOutPlayerIds.length > 0) {
+      room.events.push(
+        `${timedOutPlayerIds.length} ${timedOutPlayerIds.length === 1 ? 'pilot' : 'pilots'} timed out and automatically passed.`,
+      );
+    }
+    room.pendingActions.clear();
+    room.roundDeadlineAt = room.game.phase === 'playing' ? this.now() + this.roundDurationMs : null;
   }
 
   private requireSession(token: string): Readonly<{ room: Room; session: Session }> {
@@ -213,6 +280,9 @@ function snapshotFor(room: Room): RoomSnapshot {
     players: room.players.map((entry) => ({ ...entry })),
     game: room.game,
     submittedPlayerIds: [...room.pendingActions.keys()],
+    connectedPlayerIds: [...room.connectedPlayerIds],
+    lastTimedOutPlayerIds: [...room.lastTimedOutPlayerIds],
+    roundDeadlineAt: room.roundDeadlineAt,
     events: [...room.events],
   };
 }

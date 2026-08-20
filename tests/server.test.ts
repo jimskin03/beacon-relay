@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import type WebSocket from 'ws';
 import { buildServer } from '../src/server/app.js';
+import { RoomManager } from '../src/server/rooms/room-manager.js';
 
 let app: FastifyInstance | undefined;
 
@@ -164,6 +165,30 @@ describe('Beacon Relay HTTP API', () => {
       payload: { playerName: 'A.IXiin', inviteToken: invite.inviteToken },
     });
     expect(replay.statusCode).toBe(401);
+  });
+
+  it('broadcasts an auto-pass resolution when the round deadline expires', async () => {
+    const roomManager = new RoomManager({ roundDurationMs: 60 });
+    const server = await buildServer({ roomManager, deadlinePollMs: 10 });
+    app = server;
+    const sessions = await createFullRoom(server);
+    await server.ready();
+    const socket = await server.injectWS('/ws', {
+      headers: { origin: 'http://localhost:3000' },
+    });
+    const authenticated = nextMessage(socket);
+    socket.send(JSON.stringify({ type: 'authenticate', token: sessions[0]!.token }));
+    await authenticated;
+
+    const deadlineUpdate = await nextMessage(socket);
+    expect(deadlineUpdate).toMatchObject({
+      type: 'snapshot',
+      snapshot: {
+        game: { round: 2 },
+        lastTimedOutPlayerIds: sessions.map((session) => session.playerId),
+      },
+    });
+    socket.terminate();
   });
 });
 

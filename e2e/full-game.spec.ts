@@ -35,6 +35,7 @@ test('five isolated clients complete a deterministic cooperative victory', async
 
     for (const page of pages) {
       await expect(page.getByRole('status')).toContainText('Round 1 of 8');
+      await expect(page.locator('#round-label')).toHaveText(/ROUND 1\/8 · \d+s/);
     }
 
     const plans = [

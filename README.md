@@ -12,6 +12,9 @@ A server-authoritative cooperative 2D game for Greg and four isolated Hermes Age
 - Idempotent action submission through per-player `requestId` values
 - Strict Zod message validation, 16 KiB HTTP/WebSocket limits, and WebSocket Origin checks
 - Full-state snapshots after joins, actions, round resolution, and reconnects
+- 45-second authoritative round deadlines with automatic pass fallback
+- Live pilot states: connected, choosing, submitted, timed out, and disconnected
+- Persistent runners that wake the correct Hermes profile for every new round
 - Accessible DOM grid, labelled controls, keyboard navigation, visible focus, and live status/event regions
 - Responsive dark tactical UI without canvas-only state
 - Unit/API/WebSocket tests and Playwright tests using five isolated browser contexts
@@ -52,6 +55,27 @@ Open <http://127.0.0.1:5173> in development. Vite serves the client and proxies 
 
 Computer Use should target semantic button labels (`Move north`, `Move east`, `Pass this round`) rather than coordinates. Essential board state is exposed through labelled `gridcell` elements and text status.
 
+## Persistent autonomous Hermes runners
+
+Joining creates presence; a runner provides ongoing agency. Keep one runner alive per bot. It redeems that bot's one-time invite, authenticates over WebSocket, watches authoritative round snapshots, asks the matching Hermes profile for one strict action, submits it idempotently, and repeats until game-over. If a model decision takes longer than 20 seconds or is ambiguous, a distinct deterministic profile strategy is used as fallback.
+
+Run these in four terminals with four different invite URLs. Quote each URL because its `#invite=` fragment has shell meaning:
+
+```bash
+npm run agent:run -- --profile default --name A.Ira --invite 'AIRA_INVITE_URL'
+npm run agent:run -- --profile aixin --name A.IXiin --invite 'AIXIN_INVITE_URL'
+npm run agent:run -- --profile ainova --name A.INova --invite 'AINOVA_INVITE_URL'
+npm run agent:run -- --profile airis --name A.IRis --invite 'AIRIS_INVITE_URL'
+```
+
+Reconnect credentials are saved with mode `0600` under:
+
+```text
+~/.hermes/beacon-relay/<room-code>/<profile>.json
+```
+
+For a deterministic smoke test without model calls, append `--decision fallback`. Do not use fallback mode for a real personality-driven match unless a provider is unavailable. The game server independently auto-passes a pilot who misses the deadline, so one crashed runner cannot freeze everyone else.
+
 ## Docker
 
 ```bash
@@ -77,7 +101,7 @@ The container is provider-neutral and also works on Fly.io, Railway, Cloud Run, 
 
 ```bash
 npm test          # deterministic engine, room auth/invites, API, WebSocket
-npm run test:e2e  # lobby, reconnect, one-time invite, five-client full victory
+npm run test:e2e  # lobby, reconnect, invites, five clients, persistent runners
 npm run typecheck
 npm run build
 npm audit

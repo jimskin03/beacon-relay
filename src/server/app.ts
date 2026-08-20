@@ -44,13 +44,17 @@ const submitActionSchema = z.object({
 });
 
 export async function buildServer(
-  options: Readonly<{ allowedOrigins?: readonly string[] }> = {},
+  options: Readonly<{
+    allowedOrigins?: readonly string[];
+    roomManager?: RoomManager;
+    deadlinePollMs?: number;
+  }> = {},
 ): Promise<FastifyInstance> {
   const app = Fastify({
     logger: false,
     bodyLimit: 16 * 1024,
   });
-  const rooms = new RoomManager();
+  const rooms = options.roomManager ?? new RoomManager();
   const roomSockets = new Map<string, Set<WebSocket>>();
   const broadcastSnapshot = (
     roomCode: string,
@@ -62,6 +66,13 @@ export async function buildServer(
       if (peer !== excludedSocket && peer.readyState === peer.OPEN) peer.send(update);
     }
   };
+  const deadlineTimer = setInterval(() => {
+    for (const resolved of rooms.resolveExpiredRooms()) {
+      broadcastSnapshot(resolved.roomCode, resolved.snapshot);
+    }
+  }, options.deadlinePollMs ?? 1_000);
+  deadlineTimer.unref();
+  app.addHook('onClose', async () => clearInterval(deadlineTimer));
   const allowedOrigins = new Set(
     options.allowedOrigins ?? [
       process.env.APP_ORIGIN ?? 'http://localhost:3000',
@@ -174,6 +185,14 @@ export async function buildServer(
       const peers = roomSockets.get(authenticatedRoomCode);
       peers?.delete(socket);
       if (peers?.size === 0) roomSockets.delete(authenticatedRoomCode);
+      if (authenticatedToken) {
+        try {
+          const disconnectedSnapshot = rooms.setConnected(authenticatedToken, false);
+          broadcastSnapshot(authenticatedRoomCode, disconnectedSnapshot);
+        } catch {
+          // Session may have expired with the room.
+        }
+      }
     });
     socket.on('message', (data) => {
       let decoded: unknown;
@@ -237,14 +256,16 @@ export async function buildServer(
           roomSockets.set(authenticatedRoomCode, peers);
         }
         peers.add(socket);
+        const connectedSnapshot = rooms.setConnected(parsed.data.token, true);
         clearTimeout(authenticationTimeout);
         socket.send(
           JSON.stringify({
             type: 'snapshot',
             playerId: session.playerId,
-            snapshot: session.snapshot,
+            snapshot: connectedSnapshot,
           }),
         );
+        broadcastSnapshot(authenticatedRoomCode, connectedSnapshot, socket);
       } catch {
         socket.close(1008, 'Invalid session token');
       }

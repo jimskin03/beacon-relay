@@ -98,4 +98,47 @@ describe('RoomManager authentication', () => {
     ).toThrow('Invalid or expired invite');
     expect(() => manager.createInvite({ token: joined.token })).toThrow('Only the room host can create invites');
   });
+
+  it('auto-passes missing actions when the authoritative round deadline expires', async () => {
+    let now = 1_000;
+    const manager = new RoomManager({ roundDurationMs: 30_000, now: () => now });
+    const sessions = [
+      await manager.createRoom({ hostName: 'Greg', password: 'correct horse' }),
+    ];
+    for (const name of ['A.Ira', 'A.IXiin', 'A.INova', 'A.IRis']) {
+      sessions.push(
+        await manager.joinRoom({
+          roomCode: sessions[0]!.roomCode,
+          playerName: name,
+          password: 'correct horse',
+        }),
+      );
+    }
+    expect(sessions[4]!.snapshot.roundDeadlineAt).toBe(31_000);
+
+    manager.submitAction({
+      token: sessions[0]!.token,
+      requestId: 'greg-round-1',
+      round: 1,
+      action: { kind: 'move', direction: 'north' },
+    });
+    now = 31_001;
+    const resolved = manager.resolveExpiredRooms();
+
+    expect(resolved).toHaveLength(1);
+    expect(resolved[0]!.snapshot.game?.round).toBe(2);
+    expect(resolved[0]!.snapshot.lastTimedOutPlayerIds).toEqual(
+      sessions.slice(1).map((session) => session.playerId),
+    );
+    expect(resolved[0]!.snapshot.events).toContain('4 pilots timed out and automatically passed.');
+    expect(resolved[0]!.snapshot.roundDeadlineAt).toBe(61_001);
+  });
+
+  it('tracks whether each joined pilot currently has a live game connection', async () => {
+    const manager = new RoomManager();
+    const host = await manager.createRoom({ hostName: 'Greg', password: 'correct horse' });
+
+    expect(manager.setConnected(host.token, true).connectedPlayerIds).toEqual([host.playerId]);
+    expect(manager.setConnected(host.token, false).connectedPlayerIds).toEqual([]);
+  });
 });

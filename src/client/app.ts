@@ -17,6 +17,9 @@ type Snapshot = {
   players: Player[];
   game: Game | null;
   submittedPlayerIds: string[];
+  connectedPlayerIds: string[];
+  lastTimedOutPlayerIds: string[];
+  roundDeadlineAt: number | null;
   events: string[];
 };
 type SessionCredentials = { roomCode: string; playerId: string; token: string };
@@ -108,6 +111,7 @@ for (const button of document.querySelectorAll<HTMLButtonElement>('[data-action]
 }
 
 restoreStoredSession();
+setInterval(updateCountdown, 250);
 
 function enterRoom(nextSession: SessionResponse): void {
   session = {
@@ -200,12 +204,13 @@ function render(): void {
   if (snapshot.phase === 'lobby') {
     announce(`Lobby: ${snapshot.players.length} of 5 pilots connected.`);
     actionPanel.hidden = true;
+    element<HTMLElement>('round-label').textContent = 'AWAITING FLEET';
     board.innerHTML = '<div class="cell hub" role="gridcell" aria-label="Central hub awaiting pilots">HUB</div>';
     return;
   }
 
   const game = snapshot.game!;
-  element<HTMLElement>('round-label').textContent = `ROUND ${game.round}/${game.maxRounds}`;
+  updateCountdown();
   actionPanel.hidden = game.phase !== 'playing' || snapshot.submittedPlayerIds.includes(session.playerId);
   const active = game.beacons.filter((beacon) => beacon.active).length;
   if (game.phase === 'won') announce('Mission complete. All three beacons are connected.');
@@ -221,7 +226,18 @@ function renderPlayers(): void {
     const item = document.createElement('li');
     item.className = 'player';
     const submitted = snapshot!.submittedPlayerIds.includes(player.id);
-    item.innerHTML = `<span class="player-dot" style="color:${PLAYER_COLORS[index]};background:${PLAYER_COLORS[index]}"></span><strong>${escapeHtml(player.name)}</strong><small>${submitted ? 'ACTION SET' : snapshot!.phase === 'playing' ? 'CHOOSING' : 'ONLINE'}</small>`;
+    const connected = snapshot!.connectedPlayerIds.includes(player.id);
+    const timedOut = snapshot!.lastTimedOutPlayerIds.includes(player.id);
+    const pilotStatus = !connected
+      ? 'DISCONNECTED'
+      : timedOut
+        ? 'TIMED OUT'
+        : submitted
+          ? 'SUBMITTED'
+          : snapshot!.phase === 'playing'
+            ? 'CHOOSING'
+            : 'ONLINE';
+    item.innerHTML = `<span class="player-dot" style="color:${PLAYER_COLORS[index]};background:${PLAYER_COLORS[index]}"></span><strong>${escapeHtml(player.name)}</strong><small>${pilotStatus}</small>`;
     return item;
   }));
 }
@@ -299,6 +315,13 @@ async function api<T>(url: string, init: RequestInit): Promise<T> {
 }
 
 function announce(message: string): void { statusBanner.textContent = message; }
+function updateCountdown(): void {
+  if (!snapshot?.game) return;
+  const seconds = snapshot.roundDeadlineAt === null
+    ? 0
+    : Math.max(0, Math.ceil((snapshot.roundDeadlineAt - Date.now()) / 1_000));
+  element<HTMLElement>('round-label').textContent = `ROUND ${snapshot.game.round}/${snapshot.game.maxRounds} · ${seconds}s`;
+}
 function key(position: Position): string { return `${position.x},${position.y}`; }
 function cellLabel(position: Position): string { return `${String.fromCharCode(65 + position.x)}${position.y + 1}`; }
 function escapeHtml(value: string): string { const node = document.createElement('span'); node.textContent = value; return node.innerHTML; }
