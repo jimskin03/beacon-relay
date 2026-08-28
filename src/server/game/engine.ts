@@ -30,8 +30,8 @@ export type GameState = Readonly<{
 const HUB = { x: 4, y: 4 } as const;
 
 export function createInitialGame(playerIds: readonly string[]): GameState {
-  if (playerIds.length !== 5) {
-    throw new Error('Beacon Relay requires exactly five players');
+  if (playerIds.length < 2 || playerIds.length > 10) {
+    throw new Error('Beacon Relay requires 2 to 10 players');
   }
 
   return {

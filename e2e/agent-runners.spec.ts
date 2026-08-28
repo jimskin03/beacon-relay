@@ -8,7 +8,7 @@ test('four persistent profile runners autonomously complete a hosted-style game'
     await page.getByLabel('Your display name').fill('Greg');
     await page.getByLabel('Room password', { exact: true }).fill('correct horse');
     await page.getByRole('button', { name: 'Create private room' }).click();
-    await expect(page.getByRole('status')).toContainText('Lobby: 1 of 5 pilots connected');
+    await expect(page.getByRole('status')).toContainText('Lobby: 1 of 10 pilots linked');
 
     const credentials = await page.evaluate(() => JSON.parse(sessionStorage.getItem('beacon-relay-session')!));
     const pilots = [
@@ -41,6 +41,8 @@ test('four persistent profile runners autonomously complete a hosted-style game'
       runners.push(runner);
     }
 
+    await expect(page.locator('#pilot-count')).toHaveText('5/10', { timeout: 20_000 });
+    await page.getByRole('button', { name: 'Start mission' }).click();
     await expect(page.getByRole('status')).toContainText('Round 1 of 8', { timeout: 20_000 });
     for (let round = 1; round <= 6; round += 1) {
       await page.getByRole('button', { name: 'Pass this round' }).click();

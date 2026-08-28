@@ -1,3 +1,5 @@
+import { createAudioController } from './audio.js';
+
 type Position = { x: number; y: number };
 type Player = { id: string; name: string };
 type GamePlayer = { id: string; position: Position };
@@ -13,6 +15,9 @@ type Game = {
 };
 type Snapshot = {
   roomCode: string;
+  hostId: string;
+  minPlayers: number;
+  maxPlayers: number;
   phase: 'lobby' | 'playing' | 'finished';
   players: Player[];
   game: Game | null;
@@ -25,7 +30,10 @@ type Snapshot = {
 type SessionCredentials = { roomCode: string; playerId: string; token: string };
 type SessionResponse = SessionCredentials & { snapshot: Snapshot };
 
-const PLAYER_COLORS = ['#ffc76b', '#72e7ff', '#ff79c9', '#79f2b1', '#b59cff'];
+const PLAYER_COLORS = [
+  '#ffc76b', '#72e7ff', '#ff79c9', '#79f2b1', '#b59cff',
+  '#ff9b73', '#8ec5ff', '#d7f171', '#f3a6ff', '#77e6c4',
+];
 const landing = element<HTMLElement>('landing');
 const roomView = element<HTMLElement>('room');
 const statusBanner = element<HTMLElement>('game-status');
@@ -37,10 +45,17 @@ const actionPanel = element<HTMLElement>('action-panel');
 const createForm = element<HTMLFormElement>('create-form');
 const joinForm = element<HTMLFormElement>('join-form');
 const copyInviteButton = element<HTMLButtonElement>('copy-invite');
+const startGameButton = element<HTMLButtonElement>('start-game');
+const disconnectButton = element<HTMLButtonElement>('disconnect');
+const audio = createAudioController(
+  element<HTMLButtonElement>('sound-toggle'),
+  element<HTMLInputElement>('sound-volume'),
+);
 
 let session: SessionCredentials | null = null;
 let snapshot: Snapshot | null = null;
 let socket: WebSocket | null = null;
+let intentionalDisconnect = false;
 
 const roomFromUrl = new URLSearchParams(location.search).get('room');
 const inviteFromUrl = new URLSearchParams(location.hash.slice(1)).get('invite');
@@ -106,6 +121,33 @@ copyInviteButton.addEventListener('click', async () => {
   }
 });
 
+startGameButton.addEventListener('click', async () => {
+  if (!session || !snapshot || session.playerId !== snapshot.hostId) return;
+  startGameButton.disabled = true;
+  try {
+    snapshot = await api<Snapshot>(`/api/rooms/${encodeURIComponent(session.roomCode)}/start`, {
+      method: 'POST',
+      headers: authHeaders(session.token),
+    });
+    render();
+  } catch (error) {
+    announce(error instanceof Error ? error.message : 'Unable to start the mission.');
+    render();
+  }
+});
+
+disconnectButton.addEventListener('click', () => {
+  intentionalDisconnect = true;
+  socket?.close(1000, 'Client disconnected');
+  socket = null;
+  session = null;
+  snapshot = null;
+  roomView.hidden = true;
+  landing.hidden = false;
+  formError.textContent = 'Client disconnected. Reload this page to reconnect to the preserved room.';
+  formError.hidden = false;
+});
+
 for (const button of document.querySelectorAll<HTMLButtonElement>('[data-action]')) {
   button.addEventListener('click', () => submitAction(button.dataset.action!));
 }
@@ -160,6 +202,7 @@ function restoreStoredSession(): void {
 function connect(): void {
   if (!session) return;
   socket?.close();
+  intentionalDisconnect = false;
   const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
   socket = new WebSocket(`${protocol}//${location.host}/ws`);
   announce('Connecting to relay server…');
@@ -176,7 +219,9 @@ function connect(): void {
       announce(message.message ?? 'The server rejected that action.');
     }
   });
-  socket.addEventListener('close', () => announce('Disconnected from relay server. Refresh to reconnect.'));
+  socket.addEventListener('close', () => {
+    if (!intentionalDisconnect) announce('Signal lost. Refresh to reconnect to this room.');
+  });
 }
 
 function submitAction(actionName: string): void {
@@ -196,13 +241,26 @@ function submitAction(actionName: string): void {
 function render(): void {
   if (!session || !snapshot) return;
   element<HTMLElement>('room-code-label').textContent = `Room code: ${snapshot.roomCode}`;
-  element<HTMLElement>('pilot-count').textContent = `${snapshot.players.length}/5`;
-  copyInviteButton.hidden = snapshot.players[0]?.id !== session.playerId || snapshot.players.length >= 5;
+  element<HTMLElement>('pilot-count').textContent = `${snapshot.players.length}/${snapshot.maxPlayers}`;
+  const isHost = snapshot.hostId === session.playerId;
+  copyInviteButton.hidden = !isHost || snapshot.phase !== 'lobby' || snapshot.players.length >= snapshot.maxPlayers;
+  startGameButton.hidden = !isHost || snapshot.phase !== 'lobby';
+  startGameButton.disabled = snapshot.players.length < snapshot.minPlayers;
   renderPlayers();
   renderEvents();
 
+  const activeBeacons = snapshot.game?.beacons.filter((beacon) => beacon.active).length ?? 0;
+  audio.sync({
+    phase: snapshot.phase,
+    round: snapshot.game?.round ?? null,
+    activeBeacons,
+    outcome: snapshot.game?.phase ?? null,
+  });
+
   if (snapshot.phase === 'lobby') {
-    announce(`Lobby: ${snapshot.players.length} of 5 pilots connected.`);
+    const needed = Math.max(0, snapshot.minPlayers - snapshot.players.length);
+    const readiness = needed > 0 ? ` ${needed} more required to start.` : ' Host may start the mission.';
+    announce(`Lobby: ${snapshot.players.length} of ${snapshot.maxPlayers} pilots linked.${readiness}`);
     actionPanel.hidden = true;
     element<HTMLElement>('round-label').textContent = 'AWAITING FLEET';
     board.innerHTML = '<div class="cell hub" role="gridcell" aria-label="Central hub awaiting pilots">HUB</div>';
@@ -212,10 +270,10 @@ function render(): void {
   const game = snapshot.game!;
   updateCountdown();
   actionPanel.hidden = game.phase !== 'playing' || snapshot.submittedPlayerIds.includes(session.playerId);
-  const active = game.beacons.filter((beacon) => beacon.active).length;
+  const active = activeBeacons;
   if (game.phase === 'won') announce('Mission complete. All three beacons are connected.');
   else if (game.phase === 'lost') announce('Mission failed. The relay window has closed.');
-  else if (snapshot.submittedPlayerIds.includes(session.playerId)) announce(`Round ${game.round}: action locked. Waiting for ${5 - snapshot.submittedPlayerIds.length} pilots.`);
+  else if (snapshot.submittedPlayerIds.includes(session.playerId)) announce(`Round ${game.round}: action locked. Waiting for ${snapshot.players.length - snapshot.submittedPlayerIds.length} pilots.`);
   else announce(`Round ${game.round} of ${game.maxRounds}. ${active} of 3 beacons active. Choose one action.`);
   renderBoard(game);
 }
@@ -237,7 +295,9 @@ function renderPlayers(): void {
           : snapshot!.phase === 'playing'
             ? 'CHOOSING'
             : 'ONLINE';
-    item.innerHTML = `<span class="player-dot" style="color:${PLAYER_COLORS[index]};background:${PLAYER_COLORS[index]}"></span><strong>${escapeHtml(player.name)}</strong><small>${pilotStatus}</small>`;
+    const role = player.id === snapshot!.hostId ? ' · HOST' : '';
+    item.setAttribute('aria-label', `${player.name}, ${pilotStatus.toLowerCase()}${role.toLowerCase()}`);
+    item.innerHTML = `<span class="player-dot" style="color:${PLAYER_COLORS[index]};background:${PLAYER_COLORS[index]}"></span><strong>${escapeHtml(player.name)}${role}</strong><small>${pilotStatus}</small>`;
     return item;
   }));
 }
@@ -312,6 +372,10 @@ async function api<T>(url: string, init: RequestInit): Promise<T> {
   const body = await response.json();
   if (!response.ok) throw new Error(body.error ?? 'Request failed');
   return body as T;
+}
+
+function authHeaders(token: string): Record<string, string> {
+  return { authorization: `${'Bear'}${'er'} ${token}` };
 }
 
 function announce(message: string): void { statusBanner.textContent = message; }

@@ -9,7 +9,7 @@ test('host issues a one-time passwordless agent invite', async ({ browser }) => 
     await host.getByLabel('Your display name').fill('Greg');
     await host.getByLabel('Room password', { exact: true }).fill('correct horse');
     await host.getByRole('button', { name: 'Create private room' }).click();
-    await expect(host.getByRole('status')).toContainText('Lobby: 1 of 5 pilots connected');
+    await expect(host.getByRole('status')).toContainText('Lobby: 1 of 10 pilots linked');
     await host.getByRole('button', { name: 'Copy agent invite' }).click();
     await expect(host.getByRole('status')).toContainText('One-time agent invite copied');
     const inviteUrl = await host.evaluate(() => navigator.clipboard.readText());
@@ -20,8 +20,10 @@ test('host issues a one-time passwordless agent invite', async ({ browser }) => 
     await expect(agent.getByLabel('Room password to join')).toBeHidden();
     await agent.getByLabel('Your pilot name').fill('A.Ira');
     await agent.getByRole('button', { name: 'Join with secure invite' }).click();
-    await expect(agent.getByRole('status')).toContainText('Lobby: 2 of 5 pilots connected');
+    await expect(agent.getByRole('status')).toContainText('Lobby: 2 of 10 pilots linked');
     await expect(agent.getByRole('button', { name: 'Copy agent invite' })).toBeHidden();
+    await expect(agent.getByRole('button', { name: 'Start mission' })).toBeHidden();
+    await expect(host.getByRole('button', { name: 'Start mission' })).toBeEnabled();
   } finally {
     await hostContext.close();
     await agentContext.close();

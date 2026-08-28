@@ -15,9 +15,16 @@
         <div>
           <p class="eyebrow">HERMES COOPERATIVE SYSTEM // BR-01</p>
           <h1>Beacon Relay</h1>
-          <p class="lede">Five pilots. Eight rounds. Connect the signal lattice before the storm closes.</p>
+          <p class="lede">Two to ten pilots. Eight rounds. Connect the signal lattice before the storm closes.</p>
         </div>
-        <div class="signal-mark" aria-hidden="true"><i></i><i></i><i></i></div>
+        <div class="masthead-tools">
+          <div class="audio-controls" aria-label="Audio controls">
+            <button id="sound-toggle" type="button" aria-pressed="false">Sound: Off</button>
+            <label for="sound-volume">Volume</label>
+            <input id="sound-volume" type="range" min="0" max="1" step="0.05" value="0.28" disabled />
+          </div>
+          <div class="signal-mark" aria-hidden="true"><i></i><i></i><i></i></div>
+        </div>
       </header>
 
       <section id="landing" class="landing" aria-labelledby="access-title">
@@ -26,7 +33,7 @@
           <h2 id="access-title">Bring the fleet online</h2>
           <p>Every valid move leaves a relay behind. Coordinate paths from the central hub to all three beacons.</p>
           <ol class="brief-list">
-            <li><span>01</span> Assemble exactly five pilots.</li>
+            <li><span>01</span> Assemble 2–10 pilots. The host starts when ready.</li>
             <li><span>02</span> Choose one labelled move each round.</li>
             <li><span>03</span> Activate all beacons within eight rounds.</li>
           </ol>
@@ -60,6 +67,8 @@
           <div class="room-code-block">
             <span id="room-code-label">Room code:</span>
             <button id="copy-invite" type="button">Copy agent invite</button>
+            <button id="start-game" class="primary compact" type="button">Start mission</button>
+            <button id="disconnect" class="danger" type="button">Disconnect</button>
           </div>
         </div>
 
@@ -73,7 +82,7 @@
 
           <aside class="telemetry">
             <section class="telemetry-card" aria-labelledby="pilots-title">
-              <div class="panel-title"><h3 id="pilots-title">Pilots</h3><span id="pilot-count">0/5</span></div>
+              <div class="panel-title"><h3 id="pilots-title">Crew manifest</h3><span id="pilot-count">0/10</span></div>
               <ul id="players" class="players"></ul>
             </section>
 

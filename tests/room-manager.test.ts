@@ -26,23 +26,21 @@ describe('RoomManager authentication', () => {
     expect(joined.snapshot.players.map((player) => player.name)).toEqual(['Greg', 'A.Ira']);
   });
 
-  it('starts at five players and resolves duplicate-safe round submissions', async () => {
+  it('lets the host start with two players and resolves after the current crew submits', async () => {
     const manager = new RoomManager();
     const sessions = [
       await manager.createRoom({ hostName: 'Greg', password: 'correct horse' }),
     ];
-    for (const name of ['A.Ira', 'A.IXiin', 'A.INova', 'A.IRis']) {
-      sessions.push(
-        await manager.joinRoom({
-          roomCode: sessions[0]!.roomCode,
-          playerName: name,
-          password: 'correct horse',
-        }),
-      );
-    }
+    sessions.push(
+      await manager.joinRoom({
+        roomCode: sessions[0]!.roomCode,
+        playerName: 'A.Ira',
+        password: 'correct horse',
+      }),
+    );
 
-    expect(sessions[4]!.snapshot.phase).toBe('playing');
-    expect(sessions[4]!.snapshot.game?.round).toBe(1);
+    expect(sessions[1]!.snapshot.phase).toBe('lobby');
+    expect(manager.startGame({ token: sessions[0]!.token }).game?.round).toBe(1);
 
     const first = manager.submitAction({
       token: sessions[0]!.token,
@@ -60,14 +58,13 @@ describe('RoomManager authentication', () => {
     expect(duplicate.duplicate).toBe(true);
     expect(duplicate.snapshot.submittedPlayerIds).toHaveLength(1);
 
-    for (const session of sessions.slice(1)) {
-      manager.submitAction({
-        token: session.token,
-        requestId: `${session.playerId}-round-1`,
-        round: 1,
-        action: { kind: 'pass' },
-      });
-    }
+    const resolved = manager.submitAction({
+      token: sessions[1]!.token,
+      requestId: `${sessions[1]!.playerId}-round-1`,
+      round: 1,
+      action: { kind: 'pass' },
+    });
+    expect(resolved.resolved).toBe(true);
 
     const snapshot = manager.snapshotForToken(sessions[0]!.token);
     expect(snapshot.game?.round).toBe(2);
@@ -76,6 +73,38 @@ describe('RoomManager authentication', () => {
       y: 3,
     });
     expect(snapshot.submittedPlayerIds).toEqual([]);
+  });
+
+  it('enforces host-only starts, a two-player minimum, and a ten-player maximum', async () => {
+    const manager = new RoomManager();
+    const host = await manager.createRoom({ hostName: 'Greg', password: 'correct horse' });
+    expect(host.snapshot).toMatchObject({
+      hostId: host.playerId,
+      minPlayers: 2,
+      maxPlayers: 10,
+    });
+    expect(() => manager.startGame({ token: host.token })).toThrow('At least 2 players are required');
+
+    let nonHostToken = '';
+    for (let index = 2; index <= 10; index += 1) {
+      const joined = await manager.joinRoom({
+        roomCode: host.roomCode,
+        playerName: `Pilot ${index}`,
+        password: 'correct horse',
+      });
+      nonHostToken ||= joined.token;
+      expect(joined.snapshot.phase).toBe('lobby');
+    }
+
+    await expect(
+      manager.joinRoom({
+        roomCode: host.roomCode,
+        playerName: 'Pilot 11',
+        password: 'correct horse',
+      }),
+    ).rejects.toThrow('Room is full');
+    expect(() => manager.startGame({ token: nonHostToken })).toThrow('Only the room host can start the game');
+    expect(manager.startGame({ token: host.token }).game?.players).toHaveLength(10);
   });
 
   it('issues host-authorized one-time agent invites without sharing the room password', async () => {
@@ -114,7 +143,8 @@ describe('RoomManager authentication', () => {
         }),
       );
     }
-    expect(sessions[4]!.snapshot.roundDeadlineAt).toBe(31_000);
+    const started = manager.startGame({ token: sessions[0]!.token });
+    expect(started.roundDeadlineAt).toBe(31_000);
 
     manager.submitAction({
       token: sessions[0]!.token,

@@ -8,11 +8,19 @@ test('host creates a private room from the accessible lobby', async ({ page }) =
   await page.getByLabel('Room password', { exact: true }).fill('correct horse');
   await page.getByRole('button', { name: 'Create private room' }).click();
 
-  await expect(page.getByRole('status')).toContainText('Lobby: 1 of 5 pilots connected');
+  await expect(page.getByRole('status')).toContainText('Lobby: 1 of 10 pilots linked');
   await expect(page.getByText(/Room code:/)).toBeVisible();
   await expect(page.getByRole('button', { name: 'Copy agent invite' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Start mission' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Disconnect' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Sound: Off' })).toBeVisible();
 
   await page.reload();
-  await expect(page.getByRole('status')).toContainText('Lobby: 1 of 5 pilots connected');
+  await expect(page.getByRole('status')).toContainText('Lobby: 1 of 10 pilots linked');
   await expect(page.getByText(/Room code:/)).toBeVisible();
+
+  await page.getByRole('button', { name: 'Disconnect' }).click();
+  await expect(page.locator('#landing')).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole('status')).toContainText('Lobby: 1 of 10 pilots linked');
 });
