@@ -14,6 +14,9 @@ test('host creates a private room from the accessible lobby', async ({ page }) =
   await expect(page.getByRole('button', { name: 'Start mission' })).toBeDisabled();
   await expect(page.getByRole('button', { name: 'Disconnect' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Sound: Off' })).toBeVisible();
+  await expect(page.locator('#board')).toHaveClass(/lobby-board/);
+  await expect(page.getByText('MISSION READINESS')).toBeVisible();
+  expect(await page.locator('#board').evaluate((element) => element.getBoundingClientRect().height)).toBeLessThan(360);
 
   await page.reload();
   await expect(page.getByRole('status')).toContainText('Lobby: 1 of 10 pilots linked');

@@ -263,8 +263,15 @@ function render(): void {
     const readiness = needed > 0 ? ` ${needed} more required to start.` : ' Host can start the mission.';
     announce(`Lobby: ${snapshot.players.length} of ${snapshot.maxPlayers} pilots linked.${readiness}`);
     actionPanel.hidden = true;
+    element<HTMLElement>('board-title').textContent = 'Mission staging';
     element<HTMLElement>('round-label').textContent = 'AWAITING FLEET';
-    board.innerHTML = '<div class="cell hub" role="gridcell" aria-label="Central hub awaiting pilots">HUB</div>';
+    board.classList.add('lobby-board');
+    board.setAttribute('role', 'region');
+    board.setAttribute('aria-label', 'Mission readiness');
+    board.innerHTML = `<div class="lobby-readiness">
+      <div class="readiness-orbit" aria-hidden="true"><span></span><span></span><span></span></div>
+      <div><p class="eyebrow">MISSION READINESS</p><strong>${snapshot.players.length}/${snapshot.maxPlayers} PILOTS LINKED</strong><p>${needed > 0 ? `${needed} more pilot required before launch.` : 'Minimum crew linked. Host controls launch.'}</p></div>
+    </div>`;
     return;
   }
 
@@ -314,6 +321,10 @@ function renderEvents(): void {
 }
 
 function renderBoard(game: Game): void {
+  element<HTMLElement>('board-title').textContent = 'Signal lattice';
+  board.classList.remove('lobby-board');
+  board.setAttribute('role', 'grid');
+  board.setAttribute('aria-label', 'Beacon Relay board');
   const relayKeys = new Set(game.relays.map(key));
   const beaconByCell = new Map(game.beacons.map((beacon) => [key(beacon.position), beacon]));
   const playersByCell = new Map<string, GamePlayer[]>();
