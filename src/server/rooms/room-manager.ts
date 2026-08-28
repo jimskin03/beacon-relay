@@ -301,7 +301,10 @@ export class RoomManager {
       }
       const timedOutPlayerIds = room.players
         .map((player) => player.id)
-        .filter((playerId) => !room.pendingActions.has(playerId));
+        .filter(
+          (playerId) =>
+            !room.pendingActions.has(playerId) && room.connectedPlayerIds.has(playerId),
+        );
       this.resolveRoom(room, timedOutPlayerIds);
       resolved.push({ roomCode: room.code, snapshot: snapshotFor(room) });
     }
@@ -355,7 +358,11 @@ export class RoomManager {
     for (const playerId of timedOutPlayerIds) {
       room.pendingActions.set(playerId, { kind: 'pass' });
     }
-    const result = resolveRound(room.game, Object.fromEntries(room.pendingActions));
+    const result = resolveRound(
+      room.game,
+      Object.fromEntries(room.pendingActions),
+      Object.fromEntries(room.players.map((player) => [player.id, player.name])),
+    );
     room.game = result.state;
     room.lastTimedOutPlayerIds = [...timedOutPlayerIds];
     room.events = [...result.events];

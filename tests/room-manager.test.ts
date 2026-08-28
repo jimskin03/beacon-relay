@@ -143,6 +143,11 @@ describe('RoomManager authentication', () => {
         }),
       );
     }
+    // Two guests are live; one guest never connects and one drops before the deadline.
+    manager.setConnected(sessions[1]!.token, true);
+    manager.setConnected(sessions[2]!.token, true);
+    manager.setConnected(sessions[3]!.token, true);
+    manager.setConnected(sessions[3]!.token, false);
     const started = manager.startGame({ token: sessions[0]!.token });
     expect(started.roundDeadlineAt).toBe(31_000);
 
@@ -157,10 +162,10 @@ describe('RoomManager authentication', () => {
 
     expect(resolved).toHaveLength(1);
     expect(resolved[0]!.snapshot.game?.round).toBe(2);
-    expect(resolved[0]!.snapshot.lastTimedOutPlayerIds).toEqual(
-      sessions.slice(1).map((session) => session.playerId),
-    );
-    expect(resolved[0]!.snapshot.events).toContain('4 pilots timed out and automatically passed.');
+    // Only connected pilots who missed the deadline count as timed out;
+    // never-connected and dropped pilots simply stay DISCONNECTED.
+    expect(resolved[0]!.snapshot.lastTimedOutPlayerIds).toEqual([sessions[1]!.playerId, sessions[2]!.playerId]);
+    expect(resolved[0]!.snapshot.events).toContain('2 pilots timed out and automatically passed.');
     expect(resolved[0]!.snapshot.roundDeadlineAt).toBe(61_001);
   });
 

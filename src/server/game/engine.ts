@@ -59,6 +59,7 @@ const DIRECTION_DELTAS: Readonly<Record<Direction, Position>> = {
 export function resolveRound(
   game: GameState,
   actions: Readonly<Record<string, PlayerAction>>,
+  playerNames: Readonly<Record<string, string>> = {},
 ): Readonly<{ state: GameState; events: readonly string[] }> {
   if (game.phase !== 'playing') {
     throw new Error('Only an active game can resolve a round');
@@ -90,7 +91,7 @@ export function resolveRound(
       relayKeys.add(key);
       relays.push(target);
     }
-    events.push(`${titleCase(player.id)} moved ${action.direction} to ${cellLabel(target)}.`);
+    events.push(`${titleCase(playerNames[player.id] ?? player.id)} moved ${action.direction} to ${cellLabel(target)}.`);
     return { ...player, position: target };
   });
 
