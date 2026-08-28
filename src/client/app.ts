@@ -34,6 +34,7 @@ const PLAYER_COLORS = [
   '#ffc76b', '#72e7ff', '#ff79c9', '#79f2b1', '#b59cff',
   '#ff9b73', '#8ec5ff', '#d7f171', '#f3a6ff', '#77e6c4',
 ];
+const AUTHORIZATION_SCHEME = 'Bearer';
 const landing = element<HTMLElement>('landing');
 const roomView = element<HTMLElement>('room');
 const statusBanner = element<HTMLElement>('game-status');
@@ -259,7 +260,7 @@ function render(): void {
 
   if (snapshot.phase === 'lobby') {
     const needed = Math.max(0, snapshot.minPlayers - snapshot.players.length);
-    const readiness = needed > 0 ? ` ${needed} more required to start.` : ' Host may start the mission.';
+    const readiness = needed > 0 ? ` ${needed} more required to start.` : ' Host can start the mission.';
     announce(`Lobby: ${snapshot.players.length} of ${snapshot.maxPlayers} pilots linked.${readiness}`);
     actionPanel.hidden = true;
     element<HTMLElement>('round-label').textContent = 'AWAITING FLEET';
@@ -375,7 +376,7 @@ async function api<T>(url: string, init: RequestInit): Promise<T> {
 }
 
 function authHeaders(token: string): Record<string, string> {
-  return { authorization: `${'Bear'}${'er'} ${token}` };
+  return { authorization: `${AUTHORIZATION_SCHEME} ${token}` };
 }
 
 function announce(message: string): void { statusBanner.textContent = message; }
