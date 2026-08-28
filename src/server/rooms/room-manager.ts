@@ -8,7 +8,8 @@ import {
 } from '../game/engine.js';
 
 const scrypt = promisify(scryptCallback);
-const MAX_PLAYERS = 5;
+export const MIN_PLAYERS = 2;
+export const MAX_PLAYERS = 10;
 const DEFAULT_ROUND_DURATION_MS = 45_000;
 
 export type RoomPlayer = Readonly<{
@@ -18,6 +19,9 @@ export type RoomPlayer = Readonly<{
 
 export type RoomSnapshot = Readonly<{
   roomCode: string;
+  hostId: string;
+  minPlayers: number;
+  maxPlayers: number;
   phase: 'lobby' | 'playing' | 'finished';
   players: readonly RoomPlayer[];
   game: GameState | null;
@@ -106,6 +110,7 @@ export class RoomManager {
     if (!room || !(await verifyPassword(input.password, room.password))) {
       throw new Error('Invalid room code or password');
     }
+    if (room.game) throw new Error('Game already started');
     if (room.players.length >= MAX_PLAYERS) {
       throw new Error('Room is full');
     }
@@ -115,10 +120,20 @@ export class RoomManager {
     room.players.push(player);
     room.tokens.set(token, player.id);
     this.sessions.set(token, { roomCode: room.code, playerId: player.id });
-    if (room.players.length === MAX_PLAYERS) {
-      this.startGame(room);
-    }
     return resultFor(room, player, token);
+  }
+
+  startGame(input: Readonly<{ token: string }>): RoomSnapshot {
+    const { room, session } = this.requireSession(input.token);
+    if (session.playerId !== room.hostId) {
+      throw new Error('Only the room host can start the game');
+    }
+    if (room.game) throw new Error('Game already started');
+    if (room.players.length < MIN_PLAYERS) {
+      throw new Error(`At least ${MIN_PLAYERS} players are required`);
+    }
+    this.startRoom(room);
+    return snapshotFor(room);
   }
 
   submitAction(
@@ -144,7 +159,7 @@ export class RoomManager {
     room.processedRequests.add(requestKey);
     room.pendingActions.set(session.playerId, input.action);
     let resolved = false;
-    if (room.pendingActions.size === MAX_PLAYERS) {
+    if (room.pendingActions.size === room.players.length) {
       this.resolveRoom(room, []);
       resolved = true;
     }
@@ -193,6 +208,7 @@ export class RoomManager {
     if (session.playerId !== room.hostId) {
       throw new Error('Only the room host can create invites');
     }
+    if (room.game) throw new Error('Game already started');
     if (room.players.length >= MAX_PLAYERS) throw new Error('Room is full');
     const inviteToken = createToken();
     room.invites.add(inviteToken);
@@ -206,6 +222,7 @@ export class RoomManager {
     if (!room || !room.invites.delete(input.inviteToken)) {
       throw new Error('Invalid or expired invite');
     }
+    if (room.game) throw new Error('Game already started');
     if (room.players.length >= MAX_PLAYERS) throw new Error('Room is full');
 
     const player = createPlayer(input.playerName);
@@ -213,17 +230,14 @@ export class RoomManager {
     room.players.push(player);
     room.tokens.set(token, player.id);
     this.sessions.set(token, { roomCode: room.code, playerId: player.id });
-    if (room.players.length === MAX_PLAYERS) {
-      this.startGame(room);
-    }
     return resultFor(room, player, token);
   }
 
-  private startGame(room: Room): void {
+  private startRoom(room: Room): void {
     room.game = createInitialGame(room.players.map((entry) => entry.id));
     room.roundDeadlineAt = this.now() + this.roundDurationMs;
     room.lastTimedOutPlayerIds = [];
-    room.events = ['All five relay pilots connected. Round 1 started.'];
+    room.events = [`${room.players.length} relay pilots ready. Round 1 started.`];
   }
 
   private resolveRoom(room: Room, timedOutPlayerIds: readonly string[]): void {
@@ -276,6 +290,9 @@ function resultFor(room: Room, player: RoomPlayer, token: string): JoinResult {
 function snapshotFor(room: Room): RoomSnapshot {
   return {
     roomCode: room.code,
+    hostId: room.hostId,
+    minPlayers: MIN_PLAYERS,
+    maxPlayers: MAX_PLAYERS,
     phase: room.game ? (room.game.phase === 'playing' ? 'playing' : 'finished') : 'lobby',
     players: room.players.map((entry) => ({ ...entry })),
     game: room.game,

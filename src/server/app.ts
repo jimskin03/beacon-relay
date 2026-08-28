@@ -128,6 +128,27 @@ export async function buildServer(
     }
   });
 
+  app.post('/api/rooms/:code/start', async (request, reply) => {
+    const params = roomParamsSchema.safeParse(request.params);
+    const token = bearerToken(request.headers.authorization);
+    if (!params.success || !token) {
+      return reply.code(401).send({ error: 'Host authorization required' });
+    }
+    try {
+      const session = rooms.authenticateToken(token);
+      if (session.snapshot.roomCode !== params.data.code) {
+        return reply.code(403).send({ error: 'Token does not belong to this room' });
+      }
+      const snapshot = rooms.startGame({ token });
+      broadcastSnapshot(params.data.code, snapshot);
+      return reply.code(200).send(snapshot);
+    } catch (error) {
+      const message = errorMessage(error);
+      const statusCode = message === 'Only the room host can start the game' ? 403 : 400;
+      return reply.code(statusCode).send({ error: message });
+    }
+  });
+
   app.post('/api/rooms/:code/invites', async (request, reply) => {
     const params = roomParamsSchema.safeParse(request.params);
     const token = bearerToken(request.headers.authorization);

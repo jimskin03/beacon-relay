@@ -20,6 +20,18 @@ describe('createInitialGame', () => {
       { id: 'south', position: { x: 4, y: 7 }, active: false },
     ]);
   });
+
+  it('supports crews from two through ten pilots', () => {
+    expect(createInitialGame(['one', 'two']).players).toHaveLength(2);
+    expect(createInitialGame(Array.from({ length: 10 }, (_, index) => `pilot-${index}`)).players).toHaveLength(10);
+  });
+
+  it('rejects crews outside the supported range', () => {
+    expect(() => createInitialGame(['solo'])).toThrow('Beacon Relay requires 2 to 10 players');
+    expect(() =>
+      createInitialGame(Array.from({ length: 11 }, (_, index) => `pilot-${index}`)),
+    ).toThrow('Beacon Relay requires 2 to 10 players');
+  });
 });
 
 describe('resolveRound', () => {

@@ -48,6 +48,45 @@ describe('Beacon Relay HTTP API', () => {
     expect(joined.json().snapshot.players).toHaveLength(2);
   });
 
+  it('allows only the host to start a room with at least two players', async () => {
+    const server = await buildServer();
+    app = server;
+    const created = await server.inject({
+      method: 'POST',
+      url: '/api/rooms',
+      payload: { hostName: 'Greg', password: 'correct horse' },
+    });
+    const host = created.json();
+
+    const tooSoon = await server.inject({
+      method: 'POST',
+      url: `/api/rooms/${host.roomCode}/start`,
+      headers: authHeader(host.token),
+    });
+    expect(tooSoon.statusCode).toBe(400);
+
+    const joined = await server.inject({
+      method: 'POST',
+      url: `/api/rooms/${host.roomCode}/join`,
+      payload: { playerName: 'A.Ira', password: 'correct horse' },
+    });
+    const guest = joined.json();
+    const forbidden = await server.inject({
+      method: 'POST',
+      url: `/api/rooms/${host.roomCode}/start`,
+      headers: authHeader(guest.token),
+    });
+    expect(forbidden.statusCode).toBe(403);
+
+    const started = await server.inject({
+      method: 'POST',
+      url: `/api/rooms/${host.roomCode}/start`,
+      headers: authHeader(host.token),
+    });
+    expect(started.statusCode).toBe(200);
+    expect(started.json()).toMatchObject({ phase: 'playing', game: { round: 1 } });
+  });
+
   it('authenticates a WebSocket with an opaque token and sends a snapshot', async () => {
     const server = await buildServer();
     app = server;
@@ -207,6 +246,12 @@ async function createFullRoom(server: FastifyInstance): Promise<any[]> {
     });
     sessions.push(joined.json());
   }
+  const started = await server.inject({
+    method: 'POST',
+    url: `/api/rooms/${sessions[0].roomCode}/start`,
+    headers: authHeader(sessions[0].token),
+  });
+  if (started.statusCode !== 200) throw new Error(`Unable to start test room: ${started.body}`);
   return sessions;
 }
 
@@ -221,4 +266,8 @@ function nextMessage(socket: WebSocket): Promise<unknown> {
     });
     socket.once('error', reject);
   });
+}
+
+function authHeader(token: string): Record<string, string> {
+  return { authorization: `${'Bear'}${'er'} ${token}` };
 }

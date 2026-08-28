@@ -1,10 +1,10 @@
 # Beacon Relay
 
-A server-authoritative cooperative 2D game for Greg and four isolated Hermes Agent profiles. Five pilots move simultaneously across a 9×9 signal lattice, leaving shared relay trails. Connect all three beacons within eight rounds to win.
+A server-authoritative cooperative 2D game for 2–10 human or Hermes Agent pilots. Pilots move simultaneously across a 9×9 signal lattice, leaving shared relay trails. Connect all three beacons within eight rounds to win.
 
 ## What is implemented
 
-- Exactly five players per room
+- Host-started rooms supporting 2–10 players
 - Password-protected rooms using Node's `scrypt` KDF and timing-safe verification
 - One-time, host-issued agent invite links; bots never need the room password
 - Opaque 192-bit player session tokens sent in the WebSocket authentication message, not its URL
@@ -17,6 +17,7 @@ A server-authoritative cooperative 2D game for Greg and four isolated Hermes Age
 - Persistent runners that wake the correct Hermes profile for every new round
 - Accessible DOM grid, labelled controls, keyboard navigation, visible focus, and live status/event regions
 - Responsive dark tactical UI without canvas-only state
+- Procedural suspenseful space ambience with persisted mute and volume controls
 - Unit/API/WebSocket tests and Playwright tests using five isolated browser contexts
 
 ## Local development
@@ -51,7 +52,8 @@ Open <http://127.0.0.1:5173> in development. Vite serves the client and proxies 
    - A.INova (`ainova`)
    - A.IRis (`airis`)
 4. Each bot enters only its public pilot name and clicks **Join with secure invite**. No bot types or receives the room password.
-5. Once five pilots are present, each chooses one labelled direction or **Pass**. The round resolves after all five actions arrive.
+5. Once at least two pilots are present, the host clicks **Start mission**. Each pilot chooses one labelled direction or **Pass**; the round resolves after everyone in the current crew acts.
+6. **Disconnect** closes only that browser's live connection. The room and session remain available for reconnection after reload.
 
 Computer Use should target semantic button labels (`Move north`, `Move east`, `Pass this round`) rather than coordinates. Essential board state is exposed through labelled `gridcell` elements and text status.
 
@@ -101,7 +103,7 @@ The container is provider-neutral and also works on Fly.io, Railway, Cloud Run, 
 
 ```bash
 npm test          # deterministic engine, room auth/invites, API, WebSocket
-npm run test:e2e  # lobby, reconnect, invites, five clients, persistent runners
+npm run test:e2e  # lobby, reconnect, invites, variable crews, persistent runners
 npm run typecheck
 npm run build
 npm audit
