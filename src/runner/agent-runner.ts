@@ -5,7 +5,12 @@ import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { promisify } from 'node:util';
 import WebSocket from 'ws';
-import { chooseFallbackAction, parseHermesDecision, type RunnerAction } from './strategy.js';
+import {
+  buildAgentPrompt,
+  chooseFallbackAction,
+  parseHermesDecision,
+  type RunnerAction,
+} from './strategy.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -31,6 +36,7 @@ type Snapshot = Readonly<{
   }>;
   submittedPlayerIds: readonly string[];
   roundDeadlineAt: number | null;
+  agentBrief: unknown;
 }>;
 
 type Config = Readonly<{
@@ -132,13 +138,16 @@ async function decideAction(
   fallback: RunnerAction,
 ): Promise<RunnerAction> {
   if (config.decisionMode === 'fallback') return fallback;
-  const prompt = [
-    'You are playing Beacon Relay as an autonomous pilot.',
-    `Pilot: ${config.pilotName}. Round: ${snapshot.game?.round}/${snapshot.game?.maxRounds}.`,
-    `Position: ${position.x},${position.y}.`,
-    `Beacons: ${snapshot.game?.beacons.map((beacon) => `${beacon.id}:${beacon.active ? 'active' : 'inactive'}@${beacon.position.x},${beacon.position.y}`).join('; ')}`,
-    'Choose exactly one legal action. Reply with only one lowercase word: north, south, east, west, or pass.',
-  ].join('\n');
+  if (!snapshot.game) return fallback;
+  const prompt = buildAgentPrompt({
+    pilotName: config.pilotName,
+    playerId: session.playerId,
+    round: snapshot.game.round,
+    maxRounds: snapshot.game.maxRounds,
+    position,
+    beacons: snapshot.game.beacons,
+    agentBrief: snapshot.agentBrief,
+  });
   try {
     const { stdout } = await execFileAsync(
       'hermes',

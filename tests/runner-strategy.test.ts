@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { chooseFallbackAction, parseHermesDecision } from '../src/runner/strategy.js';
+import {
+  buildAgentPrompt,
+  chooseFallbackAction,
+  parseHermesDecision,
+} from '../src/runner/strategy.js';
 
 const state = {
   game: {
@@ -32,5 +36,27 @@ describe('persistent runner strategy', () => {
     expect(parseHermesDecision('north')).toEqual({ kind: 'move', direction: 'north' });
     expect(parseHermesDecision('PASS')).toEqual({ kind: 'pass' });
     expect(parseHermesDecision('I might move north or west')).toBeNull();
+  });
+
+  it('injects the machine mission brief and own identity into each decision prompt', () => {
+    const prompt = buildAgentPrompt({
+      pilotName: 'A.Ira',
+      playerId: 'pilot-1',
+      round: 2,
+      maxRounds: 8,
+      position: { x: 4, y: 4 },
+      beacons: state.game.beacons,
+      agentBrief: {
+        schemaVersion: 1,
+        objective: 'Connect every beacon to the hub.',
+        routing: { default: 'solve-locally', navigator: 'spawn-only' },
+        actionContract: { legalActionWords: ['north', 'south', 'east', 'west', 'pass'] },
+      },
+    });
+
+    expect(prompt).toContain('Pilot: A.Ira (playerId: pilot-1)');
+    expect(prompt).toContain('"objective":"Connect every beacon to the hub."');
+    expect(prompt).toContain('"default":"solve-locally"');
+    expect(prompt).toContain('Reply with only one lowercase word');
   });
 });

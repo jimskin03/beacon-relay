@@ -8,7 +8,7 @@ test('four persistent profile runners autonomously complete a hosted-style game'
     await page.getByLabel('Your display name').fill('Greg');
     await page.getByLabel('Room password', { exact: true }).fill('correct horse');
     await page.getByRole('button', { name: 'Create private room' }).click();
-    await expect(page.getByRole('status')).toContainText('Lobby: 1 of 10 pilots linked');
+    await expect(page.getByRole('status')).toContainText('Lobby: 1 seated · 1 online');
 
     const credentials = await page.evaluate(() => JSON.parse(sessionStorage.getItem('beacon-relay-session')!));
     const pilots = [

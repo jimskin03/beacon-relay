@@ -15,7 +15,7 @@ test('five isolated clients complete a deterministic cooperative victory', async
     await greg.getByLabel('Your display name').fill('Greg');
     await greg.getByLabel('Room password', { exact: true }).fill('correct horse');
     await greg.getByRole('button', { name: 'Create private room' }).click();
-    await expect(greg.getByRole('status')).toContainText('Lobby: 1 of 10 pilots linked');
+    await expect(greg.getByRole('status')).toContainText('Lobby: 1 seated · 1 online');
     const roomText = await greg.locator('#room-code-label').textContent();
     const roomCode = roomText?.split(': ')[1];
     expect(roomCode).toMatch(/^[A-Za-z0-9_-]{16}$/);
@@ -31,7 +31,7 @@ test('five isolated clients complete a deterministic cooperative victory', async
       await page.getByLabel('Your pilot name').fill(name);
       await page.getByLabel('Room password to join').fill('correct horse');
       await page.getByRole('button', { name: 'Join relay room' }).click();
-      await expect(page.getByRole('status')).toContainText('pilots linked');
+      await expect(page.getByRole('status')).toContainText('seated ·');
     }
 
     await greg.getByRole('button', { name: 'Start mission' }).click();

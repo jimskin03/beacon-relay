@@ -4,7 +4,7 @@ import websocket from '@fastify/websocket';
 import type WebSocket from 'ws';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
-import { RoomManager, type RoomSnapshot } from './rooms/room-manager.js';
+import { RoomManager } from './rooms/room-manager.js';
 
 const createRoomSchema = z.object({
   hostName: z.string().trim().min(1).max(24),
@@ -55,20 +55,18 @@ export async function buildServer(
     bodyLimit: 16 * 1024,
   });
   const rooms = options.roomManager ?? new RoomManager();
-  const roomSockets = new Map<string, Set<WebSocket>>();
-  const broadcastSnapshot = (
-    roomCode: string,
-    snapshot: RoomSnapshot,
-    excludedSocket?: WebSocket,
-  ): void => {
-    const update = JSON.stringify({ type: 'snapshot', snapshot });
-    for (const peer of roomSockets.get(roomCode) ?? []) {
-      if (peer !== excludedSocket && peer.readyState === peer.OPEN) peer.send(update);
+  const roomSockets = new Map<string, Map<WebSocket, string>>();
+  const broadcastSnapshot = (roomCode: string, excludedSocket?: WebSocket): void => {
+    for (const [peer, token] of roomSockets.get(roomCode) ?? []) {
+      if (peer !== excludedSocket && peer.readyState === peer.OPEN) {
+        const snapshot = rooms.snapshotForToken(token);
+        peer.send(JSON.stringify({ type: 'snapshot', snapshot }));
+      }
     }
   };
   const deadlineTimer = setInterval(() => {
     for (const resolved of rooms.resolveExpiredRooms()) {
-      broadcastSnapshot(resolved.roomCode, resolved.snapshot);
+      broadcastSnapshot(resolved.roomCode);
     }
   }, options.deadlinePollMs ?? 1_000);
   deadlineTimer.unref();
@@ -119,7 +117,7 @@ export async function buildServer(
         playerName: body.data.playerName,
         password: body.data.password,
       });
-      broadcastSnapshot(joined.roomCode, joined.snapshot);
+      broadcastSnapshot(joined.roomCode);
       return reply.code(200).send(joined);
     } catch (error) {
       const message = errorMessage(error);
@@ -140,7 +138,7 @@ export async function buildServer(
         return reply.code(403).send({ error: 'Token does not belong to this room' });
       }
       const snapshot = rooms.startGame({ token });
-      broadcastSnapshot(params.data.code, snapshot);
+      broadcastSnapshot(params.data.code);
       return reply.code(200).send(snapshot);
     } catch (error) {
       const message = errorMessage(error);
@@ -178,7 +176,7 @@ export async function buildServer(
         inviteToken: body.data.inviteToken,
         playerName: body.data.playerName,
       });
-      broadcastSnapshot(joined.roomCode, joined.snapshot);
+      broadcastSnapshot(joined.roomCode);
       return reply.code(200).send(joined);
     } catch (error) {
       const message = errorMessage(error);
@@ -208,8 +206,8 @@ export async function buildServer(
       if (peers?.size === 0) roomSockets.delete(authenticatedRoomCode);
       if (authenticatedToken) {
         try {
-          const disconnectedSnapshot = rooms.setConnected(authenticatedToken, false);
-          broadcastSnapshot(authenticatedRoomCode, disconnectedSnapshot);
+          rooms.setConnected(authenticatedToken, false);
+          broadcastSnapshot(authenticatedRoomCode);
         } catch {
           // Session may have expired with the room.
         }
@@ -247,7 +245,7 @@ export async function buildServer(
             }),
           );
           if (!result.duplicate && authenticatedRoomCode) {
-            broadcastSnapshot(authenticatedRoomCode, result.snapshot, socket);
+            broadcastSnapshot(authenticatedRoomCode, socket);
           }
         } catch (error) {
           socket.send(
@@ -273,10 +271,10 @@ export async function buildServer(
         authenticatedRoomCode = session.snapshot.roomCode;
         let peers = roomSockets.get(authenticatedRoomCode);
         if (!peers) {
-          peers = new Set();
+          peers = new Map();
           roomSockets.set(authenticatedRoomCode, peers);
         }
-        peers.add(socket);
+        peers.set(socket, parsed.data.token);
         const connectedSnapshot = rooms.setConnected(parsed.data.token, true);
         clearTimeout(authenticationTimeout);
         socket.send(
@@ -286,7 +284,7 @@ export async function buildServer(
             snapshot: connectedSnapshot,
           }),
         );
-        broadcastSnapshot(authenticatedRoomCode, connectedSnapshot, socket);
+        broadcastSnapshot(authenticatedRoomCode, socket);
       } catch {
         socket.close(1008, 'Invalid session token');
       }
