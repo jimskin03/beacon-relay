@@ -42,7 +42,7 @@ export type AgentBrief = Readonly<{
     round: number | null;
     maxRounds: number;
     roundDeadlineAt: number | null;
-    you: Readonly<{ playerId: string }>;
+    you: Readonly<{ playerId: string }> | null;
     roster: Readonly<{
       seatedCount: number;
       onlineCount: number;
@@ -100,7 +100,7 @@ function agentBriefFor(
       round: room.game?.round ?? null,
       maxRounds: room.game?.maxRounds ?? 8,
       roundDeadlineAt: room.roundDeadlineAt,
-      you: { playerId },
+      you: playerId ? { playerId } : null,
       roster: {
         seatedCount: seated,
         onlineCount: online,
