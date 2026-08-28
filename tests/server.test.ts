@@ -223,11 +223,13 @@ describe('Beacon Relay HTTP API', () => {
     await authenticated;
 
     const deadlineUpdate = await nextMessage(socket);
+    // Only the authenticated host socket is connected here, so only the host
+    // is counted as TIMED OUT; offline pilots stay DISCONNECTED instead.
     expect(deadlineUpdate).toMatchObject({
       type: 'snapshot',
       snapshot: {
         game: { round: 2 },
-        lastTimedOutPlayerIds: sessions.map((session) => session.playerId),
+        lastTimedOutPlayerIds: [sessions[0]!.playerId],
         agentBrief: { state: { you: { playerId: sessions[0]!.playerId } } },
       },
     });
