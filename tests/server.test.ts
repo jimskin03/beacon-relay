@@ -152,7 +152,10 @@ describe('Beacon Relay HTTP API', () => {
     });
     expect(await observerUpdate).toMatchObject({
       type: 'snapshot',
-      snapshot: { submittedPlayerIds: [sessions[0]!.playerId] },
+      snapshot: {
+        submittedPlayerIds: [sessions[0]!.playerId],
+        agentBrief: { state: { you: { playerId: sessions[1]!.playerId } } },
+      },
     });
 
     const duplicate = nextMessage(socket);
@@ -225,6 +228,7 @@ describe('Beacon Relay HTTP API', () => {
       snapshot: {
         game: { round: 2 },
         lastTimedOutPlayerIds: sessions.map((session) => session.playerId),
+        agentBrief: { state: { you: { playerId: sessions[0]!.playerId } } },
       },
     });
     socket.terminate();

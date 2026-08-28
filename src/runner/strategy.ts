@@ -3,6 +3,21 @@ export type RunnerAction =
   | Readonly<{ kind: 'pass' }>;
 
 type Position = Readonly<{ x: number; y: number }>;
+type PromptBeacon = Readonly<{
+  id: string;
+  position: Position;
+  active: boolean;
+}>;
+
+type AgentPromptInput = Readonly<{
+  pilotName: string;
+  playerId: string;
+  round: number;
+  maxRounds: number;
+  position: Position;
+  beacons: readonly PromptBeacon[];
+  agentBrief: unknown;
+}>;
 type StrategyState = Readonly<{
   game: Readonly<{
     beacons: readonly Readonly<{
@@ -51,4 +66,16 @@ export function parseHermesDecision(output: string): RunnerAction | null {
     return { kind: 'move', direction: decision };
   }
   return null;
+}
+
+export function buildAgentPrompt(input: AgentPromptInput): string {
+  return [
+    'You are playing Beacon Relay as an autonomous pilot.',
+    `Pilot: ${input.pilotName} (playerId: ${input.playerId}). Round: ${input.round}/${input.maxRounds}.`,
+    `Position: ${input.position.x},${input.position.y}.`,
+    `Beacons: ${input.beacons.map((beacon) => `${beacon.id}:${beacon.active ? 'active' : 'inactive'}@${beacon.position.x},${beacon.position.y}`).join('; ')}`,
+    `AGENT_BRIEF_JSON: ${JSON.stringify(input.agentBrief)}`,
+    'Follow the brief routing policy: solve locally by default; spawn only the named specialist when its condition applies.',
+    'Choose exactly one legal action. Reply with only one lowercase word: north, south, east, west, or pass.',
+  ].join('\n');
 }

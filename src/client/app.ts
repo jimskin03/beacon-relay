@@ -260,8 +260,15 @@ function render(): void {
 
   if (snapshot.phase === 'lobby') {
     const needed = Math.max(0, snapshot.minPlayers - snapshot.players.length);
-    const readiness = needed > 0 ? ` ${needed} more required to start.` : ' Host can start the mission.';
-    announce(`Lobby: ${snapshot.players.length} of ${snapshot.maxPlayers} pilots linked.${readiness}`);
+    const seated = snapshot.players.length;
+    const online = snapshot.players.filter((player) => snapshot!.connectedPlayerIds.includes(player.id)).length;
+    const offline = seated - online;
+    const readiness = needed > 0
+      ? `${needed} more ${needed === 1 ? 'seat is' : 'seats are'} required to start.`
+      : offline > 0
+        ? `Starting now: ${online} of ${seated} seated pilots online. Offline pilots will auto-pass each round until they reconnect.`
+        : 'All seated pilots online. Host can start the mission.';
+    announce(`Lobby: ${seated} seated · ${online} online. ${readiness}`);
     actionPanel.hidden = true;
     element<HTMLElement>('board-title').textContent = 'Mission staging';
     element<HTMLElement>('round-label').textContent = 'AWAITING FLEET';
@@ -270,7 +277,7 @@ function render(): void {
     board.setAttribute('aria-label', 'Mission readiness');
     board.innerHTML = `<div class="lobby-readiness">
       <div class="readiness-orbit" aria-hidden="true"><span></span><span></span><span></span></div>
-      <div><p class="eyebrow">MISSION READINESS</p><strong>${snapshot.players.length}/${snapshot.maxPlayers} PILOTS LINKED</strong><p>${needed > 0 ? `${needed} more pilot required before launch.` : 'Minimum crew linked. Host controls launch.'}</p></div>
+      <div><p class="eyebrow">MISSION READINESS</p><strong>${seated} SEATED · ${online} ONLINE</strong><p>${readiness}</p></div>
     </div>`;
     return;
   }

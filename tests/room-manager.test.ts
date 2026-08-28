@@ -171,4 +171,59 @@ describe('RoomManager authentication', () => {
     expect(manager.setConnected(host.token, true).connectedPlayerIds).toEqual([host.playerId]);
     expect(manager.setConnected(host.token, false).connectedPlayerIds).toEqual([]);
   });
+
+  it('provides a machine-readable agent brief with state and conservative routing', async () => {
+    const manager = new RoomManager();
+    const host = await manager.createRoom({ hostName: 'Greg', password: 'correct horse' });
+    const guest = await manager.joinRoom({
+      roomCode: host.roomCode,
+      playerName: 'A.Ira',
+      password: 'correct horse',
+    });
+    manager.setConnected(host.token, true);
+    const connected = manager.setConnected(guest.token, true);
+
+    expect(connected.agentBrief).toMatchObject({
+      schemaVersion: 1,
+      audience: 'autonomous-agent',
+      state: {
+        phase: 'lobby',
+        roster: { seatedCount: 2, onlineCount: 2, summary: '2 seated · 2 online' },
+      },
+      routing: {
+        default: 'solve-locally',
+        navigator: 'spawn-only-for-nontrivial-move-choice',
+        observer: 'spawn-only-to-validate-ambiguous-state',
+      },
+      actionContract: {
+        messageType: 'submit_action',
+        legalActionWords: ['north', 'south', 'east', 'west', 'pass'],
+        moveExample: {
+          type: 'submit_action',
+          round: '<snapshot.game.round>',
+          action: { kind: 'move', direction: 'north' },
+        },
+        passExample: {
+          type: 'submit_action',
+          round: '<snapshot.game.round>',
+          action: { kind: 'pass' },
+        },
+      },
+    });
+    expect(connected.agentBrief.rules.join(' ')).toContain('auto-pass');
+    expect(connected.agentBrief.objective).toContain('northwest B2');
+    expect(connected.agentBrief.objective).not.toContain('northwest A2');
+
+    const disconnected = manager.setConnected(guest.token, false);
+    expect(disconnected.agentBrief.state.roster).toMatchObject({
+      seatedCount: 2,
+      onlineCount: 1,
+      summary: '2 seated · 1 online',
+    });
+    expect(disconnected.agentBrief.state.offlineAutoPassWarning).toContain(
+      '1 offline pilot will auto-pass each round until they reconnect',
+    );
+    expect(JSON.stringify(disconnected.agentBrief)).not.toContain(host.token);
+    expect(JSON.stringify(disconnected.agentBrief)).not.toContain(guest.token);
+  });
 });
