@@ -58,6 +58,8 @@ let socket: WebSocket | null = null;
 let decidingRound: number | null = null;
 let finished = false;
 let reconnectTimer: NodeJS.Timeout | null = null;
+let reconnectAttempts = 0;
+const MAX_RECONNECT_ATTEMPTS = 8;
 
 connect();
 
@@ -68,6 +70,7 @@ function connect(): void {
   const websocketUrl = `${origin.replace(/^http/, 'ws')}/ws`;
   socket = new WebSocket(websocketUrl, { headers: { Origin: origin } });
   socket.on('open', () => {
+    reconnectAttempts = 0;
     socket?.send(JSON.stringify({ type: 'authenticate', token: session.token }));
     console.log(`[${config.profile}] connected as ${config.pilotName}`);
   });
@@ -77,9 +80,28 @@ function connect(): void {
   socket.on('error', (error) => {
     console.error(`[${config.profile}] websocket error: ${error.message}`);
   });
-  socket.on('close', () => {
+  socket.on('close', (code) => {
     if (finished) return;
-    console.log(`[${config.profile}] disconnected; reconnecting`);
+    const closeCode = code ?? 1006;
+    if (closeCode === 1008) {
+      // Auth or policy rejection: the saved token no longer maps to a live room.
+      console.error(
+        `[${config.profile}] rejected on connect (1008): the saved session is no longer valid ` +
+          '(server restarted or the room is gone). Re-issue a fresh agent invite and relaunch the runner.',
+      );
+      process.exit(1);
+    }
+    reconnectAttempts += 1;
+    console.log(
+      `[${config.profile}] disconnected (${closeCode}); reconnecting (${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`,
+    );
+    if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+      console.error(
+        `[${config.profile}] could not reconnect after ${MAX_RECONNECT_ATTEMPTS} attempts; giving up. ` +
+          'If the room is still alive, re-issue an agent invite and relaunch the runner.',
+      );
+      process.exit(1);
+    }
     reconnectTimer = setTimeout(connect, 2_000);
   });
 }
@@ -114,7 +136,13 @@ async function handleMessage(raw: string): Promise<void> {
   decidingRound = round;
 
   const ownPlayer = snapshot.game.players.find((player) => player.id === session.playerId);
-  if (!ownPlayer) throw new Error('Authenticated player is missing from game state');
+  if (!ownPlayer) {
+    console.error(
+      `[${config.profile}] authenticated player ${session.playerId} is missing from the game roster; closing to reconnect.`,
+    );
+    socket?.close(1008, 'player missing from game');
+    return;
+  }
   const fallback = chooseFallbackAction(config.profile, ownPlayer.position, snapshot as any);
   const action = await decideAction(snapshot, ownPlayer.position, fallback);
   if (finished || snapshot.game.round !== round || socket?.readyState !== WebSocket.OPEN) {
@@ -166,25 +194,37 @@ async function loadOrJoinSession(
   code: string,
   token: string,
 ): Promise<Session> {
+  let cached: Session | null = null;
   try {
-    return JSON.parse(await readFile(path, 'utf8')) as Session;
+    cached = JSON.parse(await readFile(path, 'utf8')) as Session;
   } catch {
-    const response = await fetch(`${origin}/api/rooms/${encodeURIComponent(code)}/invite-join`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ playerName: config.pilotName, inviteToken: token }),
-    });
-    const body = await response.json() as any;
-    if (!response.ok) throw new Error(body.error ?? 'Unable to redeem invite');
-    const joined: Session = {
-      roomCode: body.roomCode,
-      playerId: body.playerId,
-      token: body.token,
-    };
-    await mkdir(dirname(path), { recursive: true, mode: 0o700 });
-    await writeFile(path, JSON.stringify(joined), { encoding: 'utf8', mode: 0o600 });
-    return joined;
+    cached = null;
   }
+  // Only reuse a saved session when it belongs to the exact room we were invited to.
+  // A stale file (another room, or a dead token from a restarted server) must not
+  // override the fresh one-time invite, or the runner silently connects to the wrong
+  // room / a dead session and can never join the intended game.
+  if (cached && cached.roomCode === code) return cached;
+  if (cached) {
+    console.warn(
+      `[${config.profile}] discarding saved session for room ${cached.roomCode} and redeeming invite for ${code}`,
+    );
+  }
+  const response = await fetch(`${origin}/api/rooms/${encodeURIComponent(code)}/invite-join`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ playerName: config.pilotName, inviteToken: token }),
+  });
+  const body = await response.json() as any;
+  if (!response.ok) throw new Error(body.error ?? 'Unable to redeem invite');
+  const joined: Session = {
+    roomCode: body.roomCode,
+    playerId: body.playerId,
+    token: body.token,
+  };
+  await mkdir(dirname(path), { recursive: true, mode: 0o700 });
+  await writeFile(path, JSON.stringify(joined), { encoding: 'utf8', mode: 0o600 });
+  return joined;
 }
 
 function parseConfig(args: readonly string[]): Config {
